@@ -59,10 +59,24 @@ export class UI {
   }
 
   _loadHTML(html) {
+    if (!html) {
+      console.error('MindAR: HTML content is empty or undefined');
+      return null;
+    }
     const e = document.createElement('template');
     e.innerHTML = html.trim();
     const rootNode = e.content.firstChild;
-    document.getElementsByTagName('body')[0].appendChild(rootNode);
+    if (!rootNode) {
+      console.error('MindAR: Failed to parse HTML template:', html);
+      return null;
+    }
+    const body = document.getElementsByTagName('body')[0];
+    if (body) {
+      body.appendChild(rootNode);
+    } else {
+      console.error('MindAR: Body element not found');
+      return null;
+    }
     return rootNode;
   }
 }

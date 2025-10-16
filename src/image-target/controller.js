@@ -72,13 +72,11 @@ class Controller {
     console.table(tf.memory());
   }
 
-  addImageTargets(fileURL) {
-    return new Promise(async (resolve, reject) => {
-      const content = await fetch(fileURL);
-      const buffer = await content.arrayBuffer();
-      const result = this.addImageTargetsFromBuffer(buffer);
-      resolve(result);
-    });
+  async addImageTargets(fileURL) {
+    const content = await fetch(fileURL);
+    const buffer = await content.arrayBuffer();
+    const result = this.addImageTargetsFromBuffer(buffer);
+    return result;
   }
 
   addImageTargetsFromBuffer(buffer) {
@@ -163,27 +161,25 @@ class Controller {
 
   processVideo(input) {
     if (this.processingVideo) return;
-
     this.processingVideo = true;
 
     this.trackingStates = [];
     for (let i = 0; i < this.markerDimensions.length; i++) {
       this.trackingStates.push({
-	showing: false,
-	isTracking: false,
-	currentModelViewTransform: null,
-	trackCount: 0,
-	trackMiss: 0,
-	filter: new OneEuroFilter({minCutOff: this.filterMinCF, beta: this.filterBeta})
+        showing: false,
+        isTracking: false,
+        currentModelViewTransform: null,
+        trackCount: 0,
+        trackMiss: 0,
+        filter: new OneEuroFilter({minCutOff: this.filterMinCF, beta: this.filterBeta})
       });
-      //console.log("filterMinCF", this.filterMinCF, this.filterBeta);
     }
 
     const startProcessing = async() => {
-      while (true) {
-	if (!this.processingVideo) break;
-
-	const inputT = this.inputLoader.loadInput(input);
+      try {
+        while (this.processingVideo) {
+          const timestamp = Date.now();
+          const inputT = this.inputLoader.loadInput(input);
 
 	const nTracking = this.trackingStates.reduce((acc, s) => {
 	  return acc + (!!s.isTracking? 1: 0);
@@ -254,17 +250,14 @@ class Controller {
 	  // if showing, then call onUpdate, with world matrix
 	  if (trackingState.showing) {
 	    const worldMatrix = this._glModelViewMatrix(trackingState.currentModelViewTransform, i);
-	    trackingState.trackingMatrix = trackingState.filter.filter(Date.now(), worldMatrix);
+	    trackingState.trackingMatrix = trackingState.filter.filter(timestamp, worldMatrix);
 
-	    let clone = [];
-	    for (let j = 0; j < trackingState.trackingMatrix.length; j++) {
-	      clone[j] = trackingState.trackingMatrix[j];
-	    }
+	    let clone = [...trackingState.trackingMatrix];
 
-      const isInputRotated = input.width === this.inputHeight && input.height === this.inputWidth;
-      if (isInputRotated) {
-        clone = this.getRotatedZ90Matrix(clone);
-      }
+            const isInputRotated = input.width === this.inputHeight && input.height === this.inputWidth;
+            if (isInputRotated) {
+              clone = this.getRotatedZ90Matrix(clone);
+            }
 
 	    this.onUpdate && this.onUpdate({type: 'updateMatrix', targetIndex: i, worldMatrix: clone});
 	  }
@@ -273,6 +266,10 @@ class Controller {
 	inputT.dispose();
         this.onUpdate && this.onUpdate({type: 'processDone'});
 	await tf.nextFrame();
+        }
+      } catch (error) {
+        console.error('Error in video processing:', error);
+        this.processingVideo = false;
       }
     }
     startProcessing();
@@ -308,19 +305,35 @@ class Controller {
   }
 
   _workerMatch(featurePoints, targetIndexes) {
-    return new Promise(async (resolve, reject) => {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.workerMatchDone = null;
+        reject(new Error('Worker match timeout'));
+      }, 30000); // 30 second timeout
+
       this.workerMatchDone = (data) => {
+        clearTimeout(timeout);
+        this.workerMatchDone = null;
         resolve({targetIndex: data.targetIndex, modelViewTransform: data.modelViewTransform, debugExtra: data.debugExtra});
-      }
+      };
+
       this.worker.postMessage({type: 'match', featurePoints: featurePoints, targetIndexes});
     });
   }
 
   _workerTrackUpdate(modelViewTransform, trackingFeatures) {
-    return new Promise(async (resolve, reject) => {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.workerTrackDone = null;
+        reject(new Error('Worker track update timeout'));
+      }, 30000); // 30 second timeout
+
       this.workerTrackDone = (data) => {
+        clearTimeout(timeout);
+        this.workerTrackDone = null;
         resolve(data.modelViewTransform);
-      }
+      };
+
       const {worldCoords, screenCoords} = trackingFeatures;
       this.worker.postMessage({type: 'trackUpdate', modelViewTransform, worldCoords, screenCoords});
     });

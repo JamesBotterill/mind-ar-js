@@ -5,13 +5,33 @@ import basicSsl from '@vitejs/plugin-basic-ssl'
 
 const outDir = 'dist-dev'
 
+// Plugin to handle ?raw imports for HTML files
+const rawHtmlPlugin = () => ({
+    name: 'raw-html',
+    async load(id) {
+        if (id.endsWith('.html?raw')) {
+            const filePath = id.replace('?raw', '');
+            const content = await fs.readFile(filePath, 'utf-8');
+            return `export default ${JSON.stringify(content)}`;
+        }
+    }
+})
+
 const moduleConfig={
     mode: 'development',
-    assetsInclude:'**/*.html',
+    assetsInclude:['**/*.html'],
     base:'./',
     plugins:[
-        basicSsl()
+        basicSsl(),
+        rawHtmlPlugin()
     ],
+    server: {
+        https: true,
+        open: '/examples/image-tracking/example1.html'
+    },
+    optimizeDeps: {
+        exclude: ['three']
+    },
     build: {
         outDir: outDir,
         emptyOutDir:false,
