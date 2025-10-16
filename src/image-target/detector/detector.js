@@ -1097,6 +1097,26 @@ class Detector {
 		const outInfo = tf.backend().runWebGLProgram(program, inputs, outputType);
 		return tf.engine().makeTensorFromDataId(outInfo.dataId, outInfo.shape, outInfo.dtype);
 	}
+
+	/**
+	 * Dispose all cached tensors to prevent memory leaks
+	 * Call this before discarding a Detector instance
+	 */
+	dispose() {
+		// Dispose tensorCaches that were created with tf.keep()
+		if (this.tensorCaches.computeFreakDescriptors) {
+			this.tensorCaches.computeFreakDescriptors.positionT.dispose();
+		}
+		if (this.tensorCaches._computeExtremaFreak) {
+			this.tensorCaches._computeExtremaFreak.freakPointsT.dispose();
+		}
+		if (this.tensorCaches.orientationHistograms) {
+			this.tensorCaches.orientationHistograms.radialPropertiesT.dispose();
+		}
+		// Clear the caches
+		this.tensorCaches = {};
+		this.kernelCaches = {};
+	}
 }
 
 export {
